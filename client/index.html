@@ -1,0 +1,528 @@
+<html>
+<head>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+</head>
+<body bgcolor='black'>
+<div id='coords-div' class='coords-div'><font size="3" id='coords'>X: , Y: </font></div>
+<div id='scoreboard-div' class='scoreboard-div'><p style="font-size:20px" id='scoreboard'></p></div>
+<div id='score-div' class='score-div'><p style="font-size:40px" id='score'>Score: 0</p></div>
+<div class="startMenu" id="startMenu">
+<span class="input input--haruki">
+	<input class="input__field input__field--haruki" type="text" placeholder="Nickname" id="nickname"/>
+</span>
+<button class="startButton" style="vertical-align:middle" id="startButton"><span>Start </span></button>
+</div>
+<canvas id='canvas'
+style='border:1px solid #000900;'></canvas>
+<style>
+.input--haruki {
+	margin: 4em 1em 1em;
+}
+
+.input__field--haruki {
+	padding: 0.5em 0.25em;
+	width: 300;
+	background: transparent;
+	color: #AFB5BB;
+	font-size: 1.55em;
+	border-radius: 25px;
+	outline: none;
+	margin-top:20%;
+	margin-left:35%;
+}
+
+* { margin:0; padding:0; } /* to remove the top and left whitespace */
+
+html, body { width:100%; height:100%; } /* just to be sure these are full screen*/
+
+canvas { display:block; } /* To remove the scrollbars */
+
+.scoreboard-div {
+	position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 200px;
+    border: 2px solid;
+    border-color: #ededed;
+    background-color: #ededed;
+    border-radius: 5px;
+    opacity: 0.5;
+}
+.coords-div {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    width: 100px;
+    border: 2px solid;
+    border-color: #8c8c8c;
+    background-color: #8c8c8c;
+    border-radius: 5px;
+    opacity: 0.5;
+}
+.score-div {
+    position: absolute;
+    bottom: 0px;
+    left: 0px;
+    width: 190px;
+/*     height: 50px; */
+    border: 2px solid;
+    border-color: #FFFFFF;
+    opacity: 0.8;
+    background-color: #FFFFFF;
+    border-radius: 5px;
+}
+/* to show the canvas bounds */
+canvas {
+    background: #777777;
+}
+
+div.startMenu {
+  opacity:    0.7; 
+  background: #000; 
+  width:      100%;
+  height:     100%; 
+  z-index:    0;
+  top:        0; 
+  left:       0; 
+	position:fixed;
+    padding:0;
+    margin:0;
+}
+
+.startButton {
+  display: inline-block;
+  border-radius: 4px;
+  background-color: #4bef45;
+  border: none;
+  color: #FFFFFF;
+  text-align: center;
+  font-size: 28px;
+  padding: 10px;
+  width: 100px;
+  transition: all 0.5s;
+  cursor: pointer;
+  margin-top: 10px;
+/*     margin-right: 50%; */
+/*     margin-bottom: 50%; */
+    margin-left: 45%;
+
+}
+
+.startButton span {
+  cursor: pointer;
+  display: inline-block;
+  position: relative;
+  transition: 0.5s;
+}
+
+.startButton span:after {
+  content: '\00bb';
+  position: absolute;
+  opacity: 0;
+  top: 0;
+  right: -20px;
+  transition: 0.5s;
+}
+
+.startButton:hover span {
+  padding-right: 25px;
+}
+
+.startButton:hover span:after {
+  opacity: 1;
+  right: 0;
+}
+</style>
+<script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
+<!-- <script src="priority-queue.js"></script> -->
+<!-- <script src="https://ajax.aspnetcdn.com/ajax/jQuery/jquery-3.1.1.min.js"> -->
+
+<script>
+var socket;
+var c = document.getElementById('canvas');
+var coords = document.getElementById('coords');
+var startMenu = document.getElementById('startMenu');
+var scoreboard = document.getElementById('scoreboard');
+var score = document.getElementById('score');
+var ctx = c.getContext("2d");
+
+var battleshipSprite = new Image();
+battleshipSprite.src = "battleships/battleship1.png"
+var missileSprite = new Image();
+missileSprite.src = "missiles/missile1.png";
+
+ctx.font = '30px Arial';
+
+//=====constants=====
+var viewWidth = 768;
+var viewHeight = 432;
+var playerWidth = 100;
+var playerHeight = 100;
+var missileWidth = 19;
+var missileHeight = 71;
+var explosionWidth = 200;
+var explosionHeight = 200;
+var borderWidth = 2000;
+var borderHeight = 2000;
+var particleWidth = 30;
+var particleHeight = 30;
+var lineWidth = 1
+var distBetweenLines = 50
+var PLAYER_COLOR="#00FF00"
+var MISSILE_COLOR="#FF0000"
+var BORDER_COLOR="#000000"
+var NICKNAME_COLOR="#FFFFFF"
+var PARTICLE_COLOR = "#FFFFFF"
+var EXPLOSION_TIME_TO_LIVE = 9
+var PARTICLE_TIME_TO_LIVE = 200
+var gameWidth = 0;
+var gameHeight = 0;
+//===================
+
+var useParticles = false
+
+var myId;
+var PARTICLE_LIST = []
+var dead = true
+var myX
+var myY
+var myAngle
+// origin = (myX-c.width/2), (myY-c.height/2)
+var origin = {x: 0, y: 0}
+var myScore;
+var explosionSprite	= []
+var particleSprite = []
+var top10 = []
+// var scoreboardQueue = new PriorityQueue({ comparator: function(a, b) { return b - a; }});
+function join(){ //init socket connection
+	socket = io();
+}
+function startGame(){ //init player
+	if(document.getElementById('nickname').value == "placeholder101010101010101010101"){
+		return;
+	}
+	dead = false
+	socket.emit("start", {nick: document.getElementById('nickname').value});
+	$("#startMenu").fadeOut()
+	$("#coords-div").fadeIn()
+}
+
+function drawLine(x, y, vertical){
+	ctx.fillStyle="#00FFFF";
+	if(vertical){
+		ctx.fillRect(x-lineWidth/2,y, lineWidth, c.height)
+	}else{
+		ctx.fillRect(x, y-lineWidth/2, c.width, lineWidth);
+	}
+	ctx.fillStyle="#000000";
+}
+function drawGrid(){
+// 	console.log(origin)
+	for(var i = -(origin.x%distBetweenLines)-distBetweenLines; i<origin.x + (3/2)*c.width; i+=distBetweenLines){
+		drawLine(i,0,true)
+	}
+	for(var i = -(origin.y%distBetweenLines)-distBetweenLines; i<origin.y + (3/2)*c.height; i+=distBetweenLines){
+		drawLine(0,i,false)
+	}
+}
+function drawBorders(){
+   ctx.fillRect(-origin.x-borderWidth, -origin.y- borderHeight, borderWidth,gameHeight+borderHeight); //left
+   ctx.fillRect(gameWidth-origin.x, -origin.y- borderHeight, borderWidth,gameHeight+2*borderHeight); //right
+   ctx.fillRect(-origin.x-borderWidth, -origin.y-borderHeight, gameWidth+borderWidth,borderHeight); //top
+   ctx.fillRect(-origin.x-borderWidth, gameHeight-origin.y, gameWidth+borderWidth,borderHeight); //bottom
+
+}
+join();
+initExplosionSprite()
+initParticleSprite()
+function initExplosionSprite(){
+	var sources = [
+		'explosions/1.png',
+		'explosions/2.png',
+		'explosions/3.png',
+		'explosions/4.png',
+		'explosions/5.png',
+		'explosions/6.png',
+		'explosions/7.png',
+		'explosions/8.png',
+		'explosions/9.png',
+		'explosions/10.png'
+	]
+	explosionSprite = [
+	new Image(),
+	new Image(),
+	new Image(),
+	new Image(),
+	new Image(),
+	new Image(),
+	new Image(),
+	new Image(),
+	new Image(),
+	new Image()
+	];
+	for(var i = 0; i<10; i++){
+		explosionSprite[i].src = sources[i]
+	}
+}
+function initParticleSprite(){
+	var sources = [
+		'smoke/1.png',
+		'smoke/2.png',
+		'smoke/3.png',
+		'smoke/4.png'
+	]
+	particleSprite = [
+		new Image(),
+		new Image(),
+		new Image(),
+		new Image()
+	]
+	for(var i = 0; i<4; i++){
+		particleSprite[i].src = sources[i]
+	}
+}
+socket.on('id', function(data){
+	myId = data.id;
+});
+socket.on('gameBorders', function(data){
+	gameWidth = data.width;
+	gameHeight = data.height;
+});
+var Position = function(nickname, score){
+	var self = {
+		nickname: nickname,
+		score: score
+	}
+	return self;
+}
+function initTop10(){
+top10 = [
+new Position('placeholder101010101010101010101',0),
+new Position('placeholder101010101010101010101',0),
+new Position('placeholder101010101010101010101',0),
+new Position('placeholder101010101010101010101',0),
+new Position('placeholder101010101010101010101',0),
+new Position('placeholder101010101010101010101',0),
+new Position('placeholder101010101010101010101',0),
+new Position('placeholder101010101010101010101',0),
+new Position('placeholder101010101010101010101',0),
+new Position('placeholder101010101010101010101',0),
+];
+}
+var explosions = []
+var Explosion = function(x,y){
+	var self = {
+		x: x,
+		y: y,
+		timeToLive: EXPLOSION_TIME_TO_LIVE
+	}
+	return self;
+}
+function explosion(x, y){
+	explosions.push(Explosion(x,y));
+}
+var Particle = function(x,y){
+	var self = {
+		x: x,
+		y: y,
+		timeToLive: PARTICLE_TIME_TO_LIVE+Math.random()*30
+	}
+	return self;
+}
+socket.on('newPositions', function(data){
+	ctx.clearRect(0,0,c.width,c.height);
+	ctx.fillStyle=PLAYER_COLOR
+// 	console.log(data)
+	drawGrid()
+	ctx.fillStyle=BORDER_COLOR
+	drawBorders();
+//    	scoreboardQueue.clear()
+	initTop10()
+	for(var i in data.players){
+		for(var j = 0; j<10; j++){ //loops from top guy to bottom to prevent multiple adding
+			if(data.players[i].score>=top10[j].score && data.players[i].score>0){
+				if(data.players[i].nickname != top10[j].nickname){
+					top10.splice(j,0,new Position(data.players[i].nickname, data.players[i].score)) //add new element at position j
+					top10.splice(10,1) //remove last element
+				}
+				break; //if added then skip the rest below
+			}
+		}
+		if(i == myId){
+			myX = Math.round(data.players[myId].x)
+			myY = Math.round(data.players[myId].y)
+			myAngle = Math.round(data.players[myId].angle)
+			myScore = data.players[myId].score
+			myMissiles = data.players[myId].missiles
+			origin = {x: myX-c.width/2, y: myY-c.height/2}
+			coords.innerHTML = 'X: '+ myX +'<br>Y: '+ myY + "<br>Angle: "+ myAngle+"<br>Missiles: "+myMissiles
+			score.innerHTML = "Score: "+myScore
+		    ctx.save(); // save current state
+		    ctx.translate(c.width/2,c.height/2); // change origin
+		    ctx.rotate((myAngle-90)/360*Math.PI*2); // rotate
+			ctx.drawImage(battleshipSprite,
+    			-playerWidth/2,
+    			-playerHeight/2,
+   				playerWidth,
+    			playerHeight
+			);
+			ctx.restore()
+			ctx.fillStyle = NICKNAME_COLOR
+			ctx.font = "20px Arial";
+			ctx.textAlign = "center";
+			ctx.fillText(data.players[myId].nickname, c.width/2, c.height/2+playerHeight/2+10)
+			
+		}else{
+			var playerX = Math.round(data.players[i].x)
+			var playerY = Math.round(data.players[i].y)
+			var playerAngle = Math.round(data.players[i].angle)
+			if(playerX-origin.x>-playerWidth/2 && playerX-origin.x<c.width+playerWidth/2
+			   && playerY-origin.y>-playerHeight/2 && playerY-origin.y<c.height+playerHeight/2){
+			   ctx.save()
+			   ctx.translate(playerX-origin.x, playerY-origin.y)
+			   ctx.rotate((playerAngle-90)/360*Math.PI*2)
+			   ctx.drawImage(
+			   	battleshipSprite,
+			   	-playerWidth/2,
+			   	-playerHeight/2,
+			   	playerWidth,
+				playerHeight);
+			   ctx.restore()
+			   ctx.save()
+			   ctx.translate(playerX-origin.x, playerY-origin.y)
+			   ctx.fillStyle = NICKNAME_COLOR
+			   ctx.font = "20px Arial";
+			   ctx.textAlign = "center";
+			   ctx.fillText(data.players[i].nickname, 0, playerHeight/2+10)
+			   ctx.restore()
+			}
+		}
+		
+	}
+// 	console.log(top10)
+	scoreboard.innerHTML = "";
+	for(var i =1; i<=top10.length; i++){
+		nickname_display = top10[i-1].nickname
+		if(top10[i-1].nickname=="placeholder101010101010101010101"){
+			nickname_display = '-'
+		}
+		scoreboard.innerHTML += "<strong>"+i+". "+nickname_display+"</strong><br>"
+	}
+	if(useParticles){
+		for(var i in PARTICLE_LIST){
+			if(PARTICLE_LIST[i] == undefined) continue;
+			PARTICLE_LIST[i].timeToLive--;
+			if(PARTICLE_LIST[i].timeToLive <= 0) PARTICLE_LIST.splice(i,1)
+			if(PARTICLE_LIST[i] == undefined) continue;
+	// 		if(i % 3 != 0) continue
+	// 		ctx.fillRect(PARTICLE_LIST[i].x-origin.x-particleWidth/2, PARTICLE_LIST[i].y-origin.y-particleHeight/2, particleWidth, particleHeight)
+			ctx.drawImage(
+				particleSprite[Math.round(PARTICLE_LIST[i].timeToLive/67)],
+				PARTICLE_LIST[i].x-origin.x-particleWidth/2,
+				PARTICLE_LIST[i].y-origin.y-particleHeight/2,
+				particleWidth,
+				particleHeight
+			);
+		}
+	}
+	for(var i in data.missiles){
+		missileX = Math.round(data.missiles[i].x)
+		missileY = Math.round(data.missiles[i].y)
+		if(useParticles){
+			PARTICLE_LIST.push(Particle(missileX, missileY))
+		}
+		if(missileX-origin.x>-missileWidth/2 && missileX-origin.x<c.width+missileWidth/2
+		   && missileY-origin.y>-missileHeight/2 && missileY-origin.y<c.height+missileHeight/2){
+// 		   ctx.fillRect(missileX-origin.x-missileWidth/2, missileY-origin.y-missileHeight/2, missileWidth,missileHeight);
+			ctx.save()
+			ctx.translate(missileX-origin.x,missileY-origin.y)
+			ctx.rotate((data.missiles[i].angle-90)/360*2*Math.PI)
+			ctx.drawImage(
+				missileSprite,
+				-missileWidth/2,
+				-missileHeight/2,
+				missileWidth,
+				missileHeight
+			);
+			ctx.restore()
+		}
+	}
+	for(var i in explosions){// 
+// 		ctx.fillRect(explosions[i].x-origin.x-explosionWidth/2, explosions[i].y-origin.y-explosionHeight/2, explosionWidth, explosionHeight)
+		ctx.drawImage(
+			explosionSprite[explosions[i].timeToLive],
+			explosions[i].x-origin.x-explosionWidth/2,
+			explosions[i].y-origin.y-explosionHeight/2,
+			explosionWidth,
+			explosionHeight
+		)
+		explosions[i].timeToLive--;
+		if(explosions[i].timeToLive<=0){
+			explosions.splice(i,1);
+		}
+	}
+
+});
+socket.on('dead', function(data){
+// 	alert("DEAD")
+	if(data.id == myId){
+		dead = true
+		$("#startMenu").fadeIn()
+	  	$("#coords-div").fadeOut()
+	}
+	explosion(data.x, data.y)
+});
+$("#startButton").click(function(){
+	startGame()
+	
+});
+</script>
+<script>
+document.onkeydown = function(event){
+	if(event.keyCode === 13 && dead) startGame()
+	if(dead) return;
+// 	console.log(event.keyCode);
+	if(event.keyCode === 68)    //d
+		socket.emit('turn',{direction:'right',state:true});
+	else if(event.keyCode === 65) //a
+		socket.emit('turn',{direction:'left',state:true});
+	else if(event.keyCode === 77) //m
+		socket.emit('fire',{});
+}
+document.onkeyup = function(event){
+	if(dead) return;
+	if(event.keyCode === 68)    //d
+    	socket.emit('turn',{direction:'right',state:false});
+	else if(event.keyCode === 65) //a
+    	socket.emit('turn',{direction:'left',state:false});
+}
+</script>
+<script>
+(function() {
+        var canvas = document.getElementById('canvas'),
+                context = canvas.getContext('2d');
+
+        // resize the canvas to fill browser window dynamically
+        window.addEventListener('resize', resizeCanvas, false);
+        
+        function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                
+                /**
+                 * Your drawings need to be inside this function otherwise they will be reset when 
+                 * you resize the browser window and the canvas goes will be cleared.
+                 */
+                drawStuff(); 
+        }
+        resizeCanvas();
+        
+        function drawStuff() {
+                // do your drawing stuff here
+        }
+})();
+
+</script>
+
+</body>
+</html>
